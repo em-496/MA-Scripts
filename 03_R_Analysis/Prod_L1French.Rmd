@@ -1,0 +1,2306 @@
+---
+title: "M2 Thesis - Imitation"
+author:
+  name: Erik Morris
+  affiliation: Université Paris Cité
+date: "May 15, 2024"
+output:
+  html_notebook:
+    highlight: pygments
+    number_sections: yes
+    toc: yes
+    toc_depth: 6
+    toc_float:
+      collapsed: yes
+      fig_crop: no
+  html_document:
+    toc: yes
+    toc_depth: '6'
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+# Overview
+Measures have been limited to: Spectral moments at the midpoint, durations (burst for stop), and VOT.
+
+# Load Packages
+
+```{r message=FALSE}
+loadPackage <- c('tidyverse', 'lmerTest', 'lme4', 'knitr', 'kableExtra', 'patchwork', 'ragg')
+for(a in loadPackage){
+  library(a, character.only = TRUE)
+}
+```
+
+# Load Data
+Praat outputs encoding at UTF-16
+
+```{r}
+# French Participants French
+dfFrench <- read.csv("Fr_Measures_Block.csv", header = TRUE, fileEncoding = "UTF-16")
+
+# French Participants Greek
+dfFrGreek <- read.csv("FR_GR_head.csv", header = TRUE, fileEncoding = "UTF-16")
+
+# Print the frames for quick checking
+dfFrench
+dfFrGreek
+```
+
+# Prepare the data
+## Factors
+```{r}
+# Convert categorical variables to factors
+fac_list <- c("Consonant", "Vowel", "Block", "is_sub")
+## L1 French doing French: Consonant, Vowel, Block
+dfFrench <- dfFrench %>% mutate(across(any_of(fac_list), as.factor))
+## L1 French doing Greek: Consonant, Vowel, Is_sub
+dfFrGreek <- dfFrGreek %>% mutate(is_sub = case_when(Substituted %in% NA ~ 0, TRUE ~ 1)) %>%
+  mutate(across(any_of(fac_list), as.factor))
+
+# Reorder the levels of some factors
+dfFrench$Consonant <- factor(dfFrench$Consonant, levels = c("t","d","k","g","f","v"))
+dfFrGreek$Consonant <- factor(dfFrGreek$Consonant, levels = c("c","ɟ","θ","ð","ç","ʝ","x","ɣ"))
+```
+
+## Time conversion to ms
+```{r}
+# Convert Stop time measures to ms (because I forgot to in the Praat script)
+dfFrench <- dfFrench %>% 
+  mutate(FricBurst_dur = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ FricBurst_dur * 1000,
+                                   TRUE ~ FricBurst_dur),
+         Closure = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ Closure * 1000,
+                             TRUE ~ Closure),
+         VOT = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ VOT * 1000,
+                         TRUE ~ VOT))
+
+dfFrGreek <- dfFrGreek %>% 
+  mutate(FricBurst_dur = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ FricBurst_dur * 1000,
+                                   TRUE ~ FricBurst_dur),
+         Closure = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ Closure * 1000,
+                             TRUE ~ Closure),
+         VOT = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ VOT * 1000,
+                         TRUE ~ VOT))
+```
+
+## Calculations of measures
+### Separate the Blocks
+```{r}
+# L1 French doing French
+dfFr_base <- dfFrench %>% filter(Block==0)
+dfFr_imit <- dfFrench %>% filter(Block!=0 & Block!=4)
+```
+
+```{r}
+# L1 French doing French
+dfFr_base <- dfFr_base %>% group_by(Speaker, Consonant) %>%
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+
+dfFr_imit <- dfFr_imit %>% group_by(Speaker, Consonant) %>%
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+```
+
+```{r}
+# L1 French doing Greek
+dfFrGr_gp <- dfFrGreek %>% group_by(Speaker, Consonant) %>%
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+
+## Filter out clearly substituted tokens
+dfFrGr_nosub <- dfFrGreek %>% filter(is_sub == 0) %>%
+  group_by(Speaker, Consonant) %>%
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+```
+
+### Proximity
+```{r}
+# Proximity
+## French
+dfFr_prox <- dfFr_imit %>%
+  select(Speaker, Consonant) %>% 
+  mutate(prox_cog = abs(dfKlem_gp$mean_cog - dfFr_imit$mean_cog),
+                   prox_sd = abs(dfKlem_gp$mean_sd - dfFr_imit$mean_sd),
+                   prox_kurt = abs(dfKlem_gp$mean_kurt - dfFr_imit$mean_kurt),
+                   prox_skew = abs(dfKlem_gp$mean_skew - dfFr_imit$mean_skew),
+                   prox_cog_mid = abs(dfKlem_gp$mean_cog_mid - dfFr_imit$mean_cog_mid),
+                   prox_sd_mid = abs(dfKlem_gp$mean_sd_mid - dfFr_imit$mean_sd_mid),
+                   prox_kurt_mid = abs(dfKlem_gp$mean_kurt_mid - dfFr_imit$mean_kurt_mid),
+                   prox_skew_mid = abs(dfKlem_gp$mean_skew_mid - dfFr_imit$mean_skew_mid),
+                   prox_dur = abs(dfKlem_gp$mean_dur - dfFr_imit$mean_dur),
+                   prox_closure = abs(dfKlem_gp$mean_closure - dfFr_imit$mean_closure),
+                   prox_vot = abs(dfKlem_gp$mean_vot - dfFr_imit$mean_vot),
+                   prox_amp = abs(dfKlem_gp$mean_amp - dfFr_imit$mean_amp)
+)
+```
+
+```{r}
+# Proximity (Manually done elsewhere)
+## Greek
+dfFrGr_prox <- read.csv("FrGr_Proximity.csv", header = TRUE)
+
+# Convert factor
+dfFrGr_prox$Consonant <- factor(dfFrGr_prox$Consonant, levels = c("c","ɟ","θ","ð","ç","ʝ","x","ɣ"))
+```
+
+### Change In
+```{r}
+# Change In
+## French
+## Expected Direction Column
+dfFr_ci <- dfFr_imit %>%
+  select(Speaker, Consonant) %>%
+  mutate(dir_cog = case_when(dfKlem_gp$mean_cog > dfFr_base$mean_cog ~ 1, TRUE ~ -1),
+         dir_sd = case_when(dfKlem_gp$mean_sd > dfFr_base$mean_sd ~ 1, TRUE ~ -1),
+         dir_skew = case_when(dfKlem_gp$mean_skew > dfFr_base$mean_skew ~ 1, TRUE ~ -1),
+         dir_kurt = case_when(dfKlem_gp$mean_kurt > dfFr_base$mean_kurt ~ 1, TRUE ~ -1),
+         dir_cog_mid = case_when(dfKlem_gp$mean_cog_mid > dfFr_base$mean_cog_mid ~ 1, TRUE ~ -1),
+         dir_sd_mid = case_when(dfKlem_gp$mean_sd_mid > dfFr_base$mean_sd_mid ~ 1, TRUE ~ -1),
+         dir_skew_mid = case_when(dfKlem_gp$mean_skew_mid > dfFr_base$mean_skew_mid ~ 1, TRUE ~ -1),
+         dir_kurt_mid = case_when(dfKlem_gp$mean_kurt_mid > dfFr_base$mean_kurt_mid ~ 1, TRUE ~ -1),
+         dir_dur = case_when(dfKlem_gp$mean_dur > dfFr_base$mean_dur ~ 1, TRUE ~ -1),
+         dir_vot = case_when(dfKlem_gp$mean_vot > dfFr_base$mean_vot ~ 1, TRUE ~ -1),
+         cin_cog = dfFr_imit$mean_cog - dfFr_base$mean_cog,
+         cin_sd = dfFr_imit$mean_sd - dfFr_base$mean_sd,
+         cin_kurt = dfFr_imit$mean_kurt - dfFr_base$mean_kurt,
+         cin_skew = dfFr_imit$mean_skew - dfFr_base$mean_skew,
+         cin_cog_mid = dfFr_imit$mean_cog_mid - dfFr_base$mean_cog_mid,
+         cin_sd_mid = dfFr_imit$mean_sd_mid - dfFr_base$mean_sd_mid,
+         cin_kurt_mid = dfFr_imit$mean_kurt_mid - dfFr_base$mean_kurt_mid,
+         cin_skew_mid = dfFr_imit$mean_skew_mid - dfFr_base$mean_skew_mid,
+         cin_dur = dfFr_imit$mean_dur - dfFr_base$mean_dur,
+         cin_vot = dfFr_imit$mean_vot - dfFr_base$mean_vot)
+```
+
+# French Imitation
+For ease we will separate the frames into stops and fricatives
+```{r}
+# Baseline
+dfFrBase_fric <- dfFr_base %>% filter(Consonant %in% c("f","v"))
+dfFrBase_stop <- dfFr_base %>% filter(Consonant %in% c("t","d","k","g"))
+
+# Imitation
+dfFrImit_fric <- dfFr_imit %>% filter(Consonant %in% c("f","v"))
+dfFrImit_stop <- dfFr_imit %>% filter(Consonant %in% c("t","d","k","g"))
+```
+
+## Fricatives
+### Spectral Moments
+COG
+```{r}
+# Baseline
+dfFrBase_fric %>%
+  ggplot(aes(x = Speaker, y = mean_cog_mid)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Fricative Midpoint COG",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean COG (Hz)") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_cog_mid), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_cog_mid), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_cog_mid, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_cog_mid, ymax = max_cog_mid), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6.5, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/500)
+  coord_cartesian() -> p.base.f.cog
+
+# Imitation
+dfFrImit_fric %>%
+  ggplot(aes(x = Speaker, y = mean_cog_mid)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Fricative Midpoint COG",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean COG (Hz)") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_cog_mid), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_cog_mid), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_cog_mid, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_cog_mid, ymax = max_cog_mid), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6.5, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/500)
+  coord_cartesian() -> p.imit.f.cog
+```
+
+```{r}
+wrap_plots(p.base.f.cog, p.imit.f.cog) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+Variance
+```{r}
+# Baseline
+dfFrBase_fric %>%
+  ggplot(aes(x = Speaker, y = mean_sd)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Fricative Variance",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Variance (Hz)") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_sd, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_sd, ymax = max_sd), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/500)
+  coord_cartesian() -> p.base.f.var
+
+# Imitation
+dfFrImit_fric %>%
+  ggplot(aes(x = Speaker, y = mean_sd)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Fricative Variance",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Variance (Hz)") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_sd, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_sd, ymax = max_sd), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/500)
+  coord_cartesian() -> p.imit.f.var
+```
+
+```{r}
+wrap_plots(p.base.f.var, p.imit.f.var) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+Skewness
+```{r}
+# Baseline
+dfFrBase_fric %>%
+  ggplot(aes(x = Speaker, y = mean_skew)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Fricative Skewness",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Skewness") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_skew, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_skew, ymax = max_skew), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/5)
+  coord_cartesian() -> p.base.f.skew
+
+# Imitation
+dfFrImit_fric %>%
+  ggplot(aes(x = Speaker, y = mean_skew)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Fricative Skewness",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Skewness") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_skew, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_skew, ymax = max_skew), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/5)
+  coord_cartesian() -> p.imit.f.skew
+```
+
+```{r}
+wrap_plots(p.base.f.skew, p.imit.f.skew) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+Kurtosis
+```{r}
+# Baseline
+dfFrBase_fric %>%
+  ggplot(aes(x = Speaker, y = mean_kurt)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Fricative Kurtosis",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Kurtosis") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_kurt, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_kurt, ymax = max_kurt), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/50)
+  coord_cartesian() -> p.base.f.kurt
+
+# Imitation
+dfFrImit_fric %>%
+  ggplot(aes(x = Speaker, y = mean_kurt)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Fricative Kurtosis",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Kurtosis") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_kurt, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_kurt, ymax = max_kurt), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/50)
+  coord_cartesian() -> p.imit.f.kurt
+```
+
+```{r}
+wrap_plots(p.base.f.kurt, p.imit.f.kurt) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+### Duration
+```{r}
+# Baseline
+dfFrBase_fric %>%
+  ggplot(aes(x = Speaker, y = mean_dur)) +
+  theme_gray() +
+  geom_point(stat = "identity", size = 1.2) +
+  geom_point(aes(colour = "pink"), size = 1.2, data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Fricative Duration",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Duration (ms)") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_dur, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_dur, ymax = max_dur), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/10)
+  coord_cartesian(ylim = c(0,310)) -> p.base.f.dur
+
+# Imitation
+dfFrImit_fric %>%
+  ggplot(aes(x = Speaker, y = mean_dur)) +
+  theme_gray() +
+  geom_point(stat = "identity", size = 1.2) +
+  geom_point(aes(colour = "pink"), size = 1.2, data = dfKlem_fric, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Fricative Duration",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Duration (ms)") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = max_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = min_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_fric, aes(yintercept = mean_dur, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_fric, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_dur, ymax = max_dur), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + #coord_fixed(ratio = 1/10)
+  coord_cartesian(ylim = c(0,310)) -> p.imit.f.dur
+```
+
+```{r}
+p.fdur.side <- wrap_plots(p.base.f.dur, p.imit.f.dur) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("fr_side_fdur.png", p.fdur.side, device = agg_png, width = 12,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+```
+
+## Stops
+### Spectral Moments
+COG
+```{r}
+# Baseline
+dfFrBase_stop %>%
+  ggplot(aes(x = Speaker, y = mean_cog)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Stop Burst COG",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean COG (Hz)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_cog), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_cog), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_cog, ymax = max_cog), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.base.s.cog
+  #coord_fixed(ratio = 1/500)
+
+# Imitation
+dfFrImit_stop %>%
+  ggplot(aes(x = Speaker, y = mean_cog)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Stop Burst COG",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean COG (Hz)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_cog), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_cog), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_cog, ymax = max_cog), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.imit.s.cog
+  #coord_fixed(ratio = 1/500)
+```
+
+```{r}
+wrap_plots(p.base.s.cog, p.imit.s.cog) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+Variance
+```{r}
+# Baseline
+dfFrBase_stop %>%
+  ggplot(aes(x = Speaker, y = mean_sd)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Stop Burst Variance",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Variance (Hz)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_sd, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_sd, ymax = max_sd), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.base.s.var
+  #coord_fixed(ratio = 1/500)
+
+# Imitation
+dfFrImit_stop %>%
+  ggplot(aes(x = Speaker, y = mean_sd)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Stop Burst Variance",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Variance (Hz)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_sd), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_sd, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_sd, ymax = max_sd), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.imit.s.var
+  #coord_fixed(ratio = 1/500)
+```
+
+```{r}
+wrap_plots(p.base.s.var, p.imit.s.var) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+Skewness
+```{r}
+# Baseline
+dfFrBase_stop %>%
+  ggplot(aes(x = Speaker, y = mean_skew)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Stop Burst Skewness",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Skewness") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_skew, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_skew, ymax = max_skew), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.base.s.skew
+  #coord_fixed(ratio = 1/2)
+
+# Imitation
+dfFrImit_stop %>%
+  ggplot(aes(x = Speaker, y = mean_skew)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Stop Burst Skewness",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Skewness") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_skew), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_skew, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_skew, ymax = max_skew), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.imit.s.skew
+  #coord_fixed(ratio = 1/2)
+```
+
+```{r}
+wrap_plots(p.base.s.skew, p.imit.s.skew) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+Kurtosis
+```{r}
+# Baseline
+dfFrBase_stop %>%
+  ggplot(aes(x = Speaker, y = mean_kurt)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Stop Burst Kurtosis",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Kurtosis") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_kurt, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_kurt, ymax = max_kurt), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.base.s.kurt
+  #coord_fixed(ratio = 1/50)
+
+# Imitation
+dfFrImit_stop %>%
+  ggplot(aes(x = Speaker, y = mean_kurt)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Stop Burst Kurtosis",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Kurtosis") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_kurt), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_kurt, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_kurt, ymax = max_kurt), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.imit.s.kurt
+  #coord_fixed(ratio = 1/50)
+```
+
+```{r}
+wrap_plots(p.base.s.kurt, p.imit.s.kurt) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+### Duration
+```{r}
+# Baseline
+dfFrBase_stop %>%
+  ggplot(aes(x = Speaker, y = mean_dur)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Stop Burst Duration",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Duration (ms)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_dur, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_dur, ymax = max_dur), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.base.s.dur
+  #coord_fixed(ratio = 1/10)
+
+# Imitation
+dfFrImit_stop %>%
+  ggplot(aes(x = Speaker, y = mean_dur)) +
+  theme_gray() +
+  geom_point(stat = "identity") +
+  geom_point(aes(colour = "pink"), data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Stop Burst Duration",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean Duration (ms)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_dur), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_dur, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_dur, ymax = max_dur), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian() -> p.imit.s.dur
+  #coord_fixed(ratio = 1/10)
+```
+
+```{r}
+wrap_plots(p.base.s.dur, p.imit.s.dur) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+```
+
+### VOT
+```{r}
+# Baseline
+dfFrBase_stop %>%
+  ggplot(aes(x = Speaker, y = mean_vot)) +
+  theme_gray() +
+  geom_point(stat = "identity", size = 1.2) +
+  geom_point(aes(colour = "pink"), size = 1.2, data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Baseline",
+       subtitle = "Stop VOT",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean VOT (ms)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_vot), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_vot), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_vot, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_vot, ymax = max_vot), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian(ylim = c(-200,75)) -> p.base.s.vot
+  #coord_fixed(ratio = 1/20)
+
+# Imitation
+dfFrImit_stop %>%
+  ggplot(aes(x = Speaker, y = mean_vot)) +
+  theme_gray() +
+  geom_point(stat = "identity", size = 1.2) +
+  geom_point(aes(colour = "pink"), size = 1.2, data = dfKlem_stop, stat = "identity", show.legend = FALSE) +
+  labs(title = "Imitation",
+       subtitle = "Stop VOT",
+       #caption = "In blue: range of Model Talker's productions.",
+       y = "Mean VOT (ms)") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = max_vot), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = min_vot), linetype = "dashed") +
+  geom_hline(data = dfKlem_stop, aes(yintercept = mean_vot, colour = "pink"), show.legend = FALSE) +
+  geom_rect(data = dfKlem_stop, 
+            aes(xmin = -Inf, xmax = Inf, ymin = min_vot, ymax = max_vot), 
+            fill = "skyblue", alpha = 0.3) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        #plot.margin = margin(r = 0.5, b = 0.25, l = 0.5, unit = "cm")
+        ) +
+  facet_wrap(~Consonant, ncol = 1) + 
+  coord_cartesian(ylim = c(-200,75)) -> p.imit.s.vot
+  #coord_fixed(ratio = 1/20)
+```
+
+```{r}
+p.vot.all <- wrap_plots(p.base.s.vot, p.imit.s.vot) + 
+  plot_layout(axis_titles = "collect", axes = "collect_y") + 
+  plot_annotation(caption = "In blue: range of Model Talker's productions. In pink: Model Talker's mean.",
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("fr_side_vot.png", p.vot.all, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+## Proximity
+Box plots may be the simpler, more concise manner for displaying the range. Once we figure out how to choose who was a high imitator this may change.
+
+One method may be to simply select the top 5, for each measure and each consonant, then see who shows up consistently.
+
+### Fricatives
+Spectral Moments
+```{r}
+# COG
+dfFr_prox %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_cog_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Mean COG",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.fr.f.cog
+
+dfFr_prox %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_sd_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Variance",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.fr.f.var
+
+dfFr_prox %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_skew_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Skewness",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.fr.f.skew
+
+dfFr_prox %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_kurt_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Kurtosis",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.fr.f.kurt
+```
+
+Making a wrapped plot
+```{r}
+p.fr.f.all <- wrap_plots(p.fr.f.cog, p.fr.f.var, p.fr.f.skew, p.fr.f.kurt) + 
+  plot_layout(axis_titles = "collect", axes = "collect_x") + 
+  plot_annotation(caption = "Closer to zero is better.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("fr_prox_f.png", p.fr.f.all, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+Duration
+```{r}
+# Duration
+dfFr_prox %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_dur)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Duration",
+       subtitle = "Closer to zero is better.",
+       y = "Proximity (ms)") +
+  coord_cartesian() -> p.fr.f.dur
+
+ggsave("fr_prox_fdur.png", p.fr.f.dur, device = agg_png, width = 7,
+       height = 6, units = "cm", res = 300, scaling = 0.7)
+```
+
+### Stops
+Spectral Moments
+```{r}
+# COG
+dfFr_prox %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_cog)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Stops: Mean CoG",
+       #subtitle = "closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.fr.s.cog
+
+dfFr_prox %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_sd)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Stops: Variance",
+       #subtitle = "closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.fr.s.var
+
+dfFr_prox %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_skew)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Stops: Skewness",
+       #subtitle = "closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.fr.s.skew
+
+dfFr_prox %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_kurt)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Stops: Kurtosis",
+       #subtitle = "closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.fr.s.kurt
+```
+
+Making a wrapped plot
+```{r}
+p.fr.s.all <- wrap_plots(p.fr.s.cog, p.fr.s.var, p.fr.s.skew, p.fr.s.kurt) + 
+  plot_layout(axis_titles = "collect", axes = "collect_x") + 
+  plot_annotation(caption = "Closer to zero is better.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("fr_prox_s.png", p.fr.s.all, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+Duration
+```{r}
+# Duration
+dfFr_prox %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_dur)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Burst Duration",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (ms)") +
+  coord_cartesian() -> p.fr.s.dur
+```
+
+VOT
+```{r}
+# VOT
+dfFr_prox %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Consonant, y = prox_vot)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Mean VOT",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (ms)") +
+  coord_cartesian() -> p.fr.s.vot
+```
+
+```{r}
+p.fr.s.durs <- 
+  wrap_plots(p.fr.s.dur, p.fr.s.vot) + 
+  plot_layout(axis_titles = "collect", axes = "collect_x") + 
+  plot_annotation(caption = "Closer to zero is better.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("fr_prox_sdurs.png", p.fr.s.durs, device = agg_png, width = 12, 
+       height = 6, units = "cm", res = 300, scaling = 0.7)
+```
+
+## Change In
+### Fricatives
+Spectral Moments
+```{r}
+# COG
+dfFr_ci %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_cog_mid)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 5.5, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "Change In CoG Midpoint",
+       #subtitle = "+No. = increase from baseline.",
+       y = "CoG (Hz)") +
+  geom_point(aes(colour = as.factor(dir_cog_mid)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.f.cog
+
+dfFr_ci %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_sd_mid)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 5.5, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "Change In Variance Midpoint",
+       #subtitle = "+No. = increase from baseline.",
+       y = "Variance (Hz)") +
+  geom_point(aes(colour = as.factor(dir_sd_mid)), stat = "identity") +
+  #scale_y_continuous(position = "right") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.f.sd
+
+dfFr_ci %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_skew_mid)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 5.5, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "Change In Skewness Midpoint",
+       #subtitle = "+No. = increase from baseline.",
+       y = "Skewness") +
+  geom_point(aes(colour = as.factor(dir_skew_mid)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.f.skew
+
+dfFr_ci %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_kurt_mid)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 5.5, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "Change In Kurtosis Midpoint",
+       #subtitle = "+No. = increase from baseline.",
+       y = "Kurtosis") +
+  geom_point(aes(colour = as.factor(dir_kurt_mid)), stat = "identity") +
+  scale_y_continuous(position = "right") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.f.kurt
+```
+
+```{r}
+p.fri.f.all <- wrap_plots(p.fri.f.cog, p.fri.f.sd, p.fri.f.skew, p.fri.f.kurt) + 
+  plot_layout(axis_titles = "collect_x", 
+              axes = "collect", 
+              guides = "collect") + 
+  plot_annotation(caption = "+No. = increase from baseline.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10), legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 9))
+
+ggsave("fr_cin_f.png", p.fri.f.all, device = agg_png, width = 15,
+       height = 12, units = "cm", res = 300, scaling = 0.7)
+```
+
+```{r}
+wrap_plots(p.fri.f.cog, p.fri.f.sd, ncol = 1) + 
+  plot_layout(axis_titles = "collect", 
+              axes = "collect", 
+              guides = "collect") + 
+  plot_annotation(caption = "+No. = increase from baseline.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10), legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 9))
+```
+
+
+Duration
+```{r}
+dfFr_ci %>%
+  filter(Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_dur)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9),
+        legend.position = "bottom") +
+  labs(title = "Change In Duration",
+       subtitle = "+No. = increase from baseline.",
+       y = "Change In (ms)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_dur)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) -> p.fri.f.dur
+
+ggsave("fr_cin_fdur.png", p.fri.f.dur, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+### Stops
+Spectral Moments
+```{r}
+# COG
+dfFr_ci %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_cog)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9),
+        legend.position = "bottom") +
+  labs(title = "Stops: Change In CoG",
+       #subtitle = "+No. = increase from baseline.",
+       y = "CoG (Hz)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_cog)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.s.cog
+
+dfFr_ci %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_sd)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stops: Change In Variance",
+       #subtitle = "+No. = increase from baseline.",
+       y = "CoG (Hz)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_sd)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.s.var
+
+dfFr_ci %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_skew)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stops: Change In Skewness",
+       #subtitle = "+No. = increase from baseline.",
+       y = "CoG (Hz)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_skew)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.s.skew
+
+dfFr_ci %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_kurt)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stops: Change In Kurtosis",
+       #subtitle = "+No. = increase from baseline.",
+       y = "CoG (Hz)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_kurt)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) +
+  coord_cartesian() -> p.fri.s.kurt
+
+ggsave("fr_cin_scog.png", p.fri.s.cog, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("fr_cin_svar.png", p.fri.s.var, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("fr_cin_sskew.png", p.fri.s.skew, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("fr_cin_skurt.png", p.fri.s.kurt, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+Duration
+```{r}
+dfFr_ci %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_dur)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9),
+        legend.position = "bottom") +
+  labs(title = "Stops: Change In Burst Duration",
+       subtitle = "+No. = increase from baseline.",
+       y = "Change In (ms)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_dur)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) -> p.fri.s.dur
+
+ggsave("fr_cin_sdur.png", p.fri.s.dur, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+VOT
+```{r}
+dfFr_ci %>%
+  filter(!Consonant %in% c("f","v")) %>%
+  ggplot(aes(x = Speaker, y = cin_vot)) +
+  theme_gray() +
+  geom_bar(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1),
+        legend.title = element_text(size = 9),
+        legend.position = "bottom") +
+  labs(title = "Stops: Change In VOT",
+       subtitle = "+No. = increase from baseline.",
+       y = "Change In (ms)") +
+  #geom_hline(data = dfKlem_gp, aes(yintercept = mean_cog, colour = "pink"), show.legend = FALSE) +
+  geom_point(aes(colour = as.factor(dir_vot)), stat = "identity") +
+  scale_colour_discrete(name="Expected Direction",
+                        labels = c("Decrease", "Increase")) +
+  facet_wrap(~Consonant) -> p.fri.s.vot
+  
+ggsave("fr_cin_vot.png", p.fri.s.vot, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+## Top Imitators
+```{r}
+df.top.prox <- data.frame()
+
+measure.s <- quos(prox_cog, prox_sd, prox_skew, prox_kurt, prox_dur, prox_vot)
+measure.f <- quos(prox_cog_mid, prox_sd_mid, prox_skew_mid, prox_kurt_mid, prox_dur)
+
+for (m in measure.s) {
+   dfTemp <- dfFr_prox %>%
+    filter(!Consonant %in% c("f","v")) %>%
+    arrange(!! m) %>%
+    group_by(Consonant) %>%
+    slice(1:5) %>%
+    select(Speaker, Consonant) %>%
+    mutate(Measure = quo_name(m))
+  
+  df.top.prox <- bind_rows(df.top.prox, dfTemp)
+}
+
+for (m in measure.f) {
+   dfTemp <- dfFr_prox %>%
+    filter(Consonant %in% c("f","v")) %>%
+    arrange(!! m) %>%
+    group_by(Consonant) %>%
+    slice(1:5) %>%
+    select(Speaker, Consonant) %>%
+    mutate(Measure = quo_name(m))
+  
+  df.top.prox <- bind_rows(df.top.prox, dfTemp)
+}
+```
+
+```{r}
+# Figuring out if they moved in the correct direction and only keeping the values if they did
+df.fr.ci <- dfFr_ci %>% 
+  group_by(Speaker, Consonant) %>% 
+  mutate(cor_cog = case_when(sign(dir_cog)==sign(cin_cog) ~ abs(cin_cog), TRUE ~ NA),
+         cor_var = case_when(sign(dir_sd)==sign(cin_sd) ~ abs(cin_sd), TRUE ~ NA),
+         cor_skew = case_when(sign(dir_skew)==sign(cin_skew) ~ abs(cin_skew), TRUE ~ NA),
+         cor_kurt = case_when(sign(dir_kurt)==sign(cin_kurt) ~ abs(cin_kurt), TRUE ~ NA),
+         cor_dur = case_when(sign(dir_dur)==sign(cin_dur) ~ abs(cin_dur), TRUE ~ NA),
+         cor_vot = case_when(sign(dir_vot)==sign(cin_vot) ~ abs(cin_vot), TRUE ~ NA),
+         cor_cog_mid = case_when(sign(dir_cog_mid)==sign(cin_cog_mid) ~ abs(cin_cog_mid), TRUE ~ NA),
+         cor_var_mid = case_when(sign(dir_sd_mid)==sign(cin_sd_mid) ~ abs(cin_sd_mid), TRUE ~ NA),
+         cor_skew_mid = case_when(sign(dir_skew_mid)==sign(cin_skew_mid) ~ abs(cin_skew_mid), TRUE ~ NA),
+         cor_kurt_mid = case_when(sign(dir_kurt_mid)==sign(cin_kurt_mid) ~ abs(cin_kurt_mid), TRUE ~ NA)
+         ) %>% 
+  select(Speaker, Consonant, cor_cog, cor_var, cor_skew, cor_kurt, cor_dur, cor_vot, cor_cog_mid, cor_var_mid, cor_skew_mid, cor_kurt_mid)
+```
+
+
+```{r}
+# Change In - need to update change in to collect all the measures
+# if dir_x and cin_x are both + or both - : if sign(x) == sign(x)
+# mutate()
+df.top.cin <- data.frame()
+
+measure.s <- quos(cor_cog, cor_var, cor_skew, cor_kurt, cor_dur, cor_vot)
+measure.f <- quos(cor_cog_mid, cor_var_mid, cor_skew_mid, cor_kurt_mid, cor_dur)
+
+for (m in measure.s) {
+   dfTemp <- df.fr.ci %>%
+    filter(!Consonant %in% c("f","v")) %>%
+    arrange(desc(!! m)) %>%
+    group_by(Consonant) %>%
+    slice(1:5) %>%
+    select(Speaker, Consonant) %>%
+    mutate(Measure = quo_name(m))
+  
+  df.top.cin <- bind_rows(df.top.cin, dfTemp)
+}
+
+for (m in measure.f) {
+   dfTemp <- df.fr.ci %>%
+    filter(Consonant %in% c("f","v")) %>%
+    arrange(desc(!! m)) %>%
+    group_by(Consonant) %>%
+    slice(1:5) %>%
+    select(Speaker, Consonant) %>%
+    mutate(Measure = quo_name(m))
+  
+  df.top.cin <- bind_rows(df.top.cin, dfTemp)
+}
+```
+
+
+```{r}
+df.top.prox %>% count(Speaker, Consonant) %>% arrange(desc(n))
+
+df.top.prox %>% count(Speaker) %>% arrange(desc(n))
+
+df.top.cin %>% count(Speaker, Consonant) %>% arrange(desc(n))
+
+df.top.cin %>% count(Speaker) %>% arrange(desc(n))
+```
+
+
+# Greek Production
+Side by Side of the L1 French and NG Means
+```{r}
+# Bind the two frames together
+df.gr.bind.fric <- bind_rows(lst(dfMGr_fric, dfFrGr_nosub), .id = "id") %>%
+  mutate(id = factor(id)) %>%
+  filter(!Consonant %in% c("c", "ɟ"))
+
+df.gr.bind.stop <- bind_rows(lst(dfMGr_stop, dfFrGr_nosub), .id = "id") %>%
+  mutate(id = factor(id)) %>%
+  filter(Consonant %in% c("c", "ɟ"))
+```
+
+
+## Fricatives
+### Spectral Moments
+COG
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.fric %>%
+  ggplot(aes(x = Consonant, y = mean_cog_mid, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  scale_y_continuous(breaks = seq(0, 15000, by = 2500)) +
+  geom_point(aes(alpha = 0.05), size = 1.2, position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.title = element_text(size = 10),
+        legend.position = "bottom") +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Fricatives: Mean CoG Midpoint",
+       y = "Mean CoG (Hz)") +
+  scale_fill_discrete(name="Speakers:", labels = c("L1 French", "L1 Greek")) +
+  coord_cartesian() -> p.gr.side.cog
+
+ggsave("l2gr_side_cog.png", p.gr.side.cog, device = agg_png, width = 12,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+```
+Variance
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.fric %>%
+  ggplot(aes(x = Consonant, y = mean_sd_mid, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Fricatives: Mean Variance Midpoint",
+       y = "Mean Variance (Hz)") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+Skewness
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.fric %>%
+  ggplot(aes(x = Consonant, y = mean_skew_mid, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Fricatives: Mean Skewness Midpoint",
+       y = "Mean Skewness") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+Kurtosis
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.fric %>%
+  ggplot(aes(x = Consonant, y = mean_kurt_mid, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Fricatives: Mean Kurtosis Midpoint",
+       y = "Mean Kurtosis") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+### Duration
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.fric %>%
+  ggplot(aes(x = Consonant, y = mean_dur, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Fricatives: Mean Duration",
+       y = "Mean Duration (ms)") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+## Stops
+### Spectral Moments
+COG
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.stop %>%
+  ggplot(aes(x = Consonant, y = mean_cog, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Stops: Mean CoG",
+       y = "Mean CoG (Hz)") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+
+Variance
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.stop %>%
+  ggplot(aes(x = Consonant, y = mean_sd, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Stops: Mean Variance",
+       y = "Mean Variance (Hz)") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+
+Skewness
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.stop %>%
+  ggplot(aes(x = Consonant, y = mean_skew, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Stops: Mean Skewness",
+       y = "Mean Skewness") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+
+Kurtosis
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.stop %>%
+  ggplot(aes(x = Consonant, y = mean_kurt, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Stops: Mean Kurtosis",
+       y = "Mean Kurtosis") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+
+### Duration
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.stop %>%
+  ggplot(aes(x = Consonant, y = mean_dur, fill = id)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Stops: Mean Burst Duration",
+       y = "Mean Duration (ms)") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek"))
+```
+
+### VOT
+```{r}
+#Fric COG midpoint NG x L1 Fr
+df.gr.bind.stop %>%
+  ggplot(aes(x = Consonant, y = mean_vot, fill = id)) +
+  theme_gray() +
+  geom_boxplot(show.legend = FALSE) +
+  geom_point(aes(alpha = 0.05), position = position_dodge(width = 0.75), show.legend = FALSE) +
+  #geom_point(data = dfFrGr_nosub, aes(colour = Speaker, alpha = 0.3), show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 10),
+        axis.text = element_text(size = 11)) +
+  labs(title = "L1 Greek Models x L1 French",
+       subtitle = "Greek Stops: Mean VOT",
+       y = "Mean VOT (ms)") +
+  scale_fill_discrete(name="Speakers", labels = c("L1 French", "L1 Greek")) +
+  coord_cartesian() -> l2gr.vot
+```
+## Proximity
+Excludes substitutions.
+
+### Fricatives
+Spectral Moments
+```{r}
+dfFrGr_prox %>%
+  filter(!Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_cog_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Mean COG",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.l2gr.f.cog
+```
+
+Making a wrapped plot
+```{r}
+p.l2gr.f.all <- wrap_plots(p.l2gr.f.cog, p.l2gr.f.var, p.l2gr.f.skew, p.l2gr.f.kurt) + 
+  plot_layout(axis_titles = "collect", axes = "collect_x") + 
+  plot_annotation(caption = "Closer to zero is better.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("l2gr_prox_f.png", p.l2gr.f.all, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+
+```{r}
+ggsave("l2gr_prox_fcog.png", p.l2gr.f.cog, device = agg_png, width = 4,
+       height = 6, units = "cm", res = 300, scaling = 0.5)
+```
+
+Variance
+```{r}
+dfFrGr_prox %>%
+  filter(!Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_sd_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Variance",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.l2gr.f.var
+```
+
+Skewness
+```{r}
+dfFrGr_prox %>%
+  filter(!Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_skew_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Skewness",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.l2gr.f.skew
+```
+
+Kurtosis
+```{r}
+dfFrGr_prox %>%
+  filter(!Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_kurt_mid)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Kurtosis",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.l2gr.f.kurt
+```
+
+Duration
+```{r}
+dfFrGr_prox %>%
+  filter(!Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_dur)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Duration",
+       subtitle = "Closer to zero is better.",
+       y = "Proximity (ms)") +
+  coord_cartesian() -> p.l2gr.f.dur
+
+ggsave("l2gr_prox_fdur.png", p.l2gr.f.dur, device = agg_png, width = 7,
+       height = 6, units = "cm", res = 300, scaling = 0.7)
+```
+
+### Stops
+Spectral Moments
+```{r}
+dfFrGr_prox %>%
+  filter(Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_cog)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Mean COG",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.l2gr.s.cog
+```
+Variance
+```{r}
+dfFrGr_prox %>%
+  filter(Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_sd)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Variance",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (Hz)") +
+  coord_cartesian() -> p.l2gr.s.var
+```
+
+Skewness
+```{r}
+dfFrGr_prox %>%
+  filter(Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_skew)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Skewness",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.l2gr.s.skew
+```
+
+Kurtosis
+```{r}
+dfFrGr_prox %>%
+  filter(Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_kurt)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Kurtosis",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity") +
+  coord_cartesian() -> p.l2gr.s.kurt
+```
+
+Making a wrapped plot
+```{r}
+p.l2gr.s.all <- wrap_plots(p.l2gr.s.cog, p.l2gr.s.var, p.l2gr.s.skew, p.l2gr.s.kurt) + 
+  plot_layout(axis_titles = "collect", axes = "collect_x") + 
+  plot_annotation(caption = "Closer to zero is better.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("l2gr_prox_s.png", p.l2gr.s.all, device = agg_png, width = 12,
+       height = 10, units = "cm", res = 300, scaling = 0.7)
+```
+
+Duration
+```{r}
+dfFrGr_prox %>%
+  filter(Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_dur)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Duration",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (ms)") +
+  coord_cartesian() -> p.l2gr.s.dur
+```
+
+VOT
+```{r}
+dfFrGr_prox %>%
+  filter(Consonant %in% c("c","ɟ")) %>%
+  ggplot(aes(x = Consonant, y = prox_vot)) +
+  theme_gray() +
+  geom_boxplot(width = 0.5) +
+  geom_point(aes(colour = "pink", alpha = 0.3), size = 1.2, stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        plot.subtitle = element_text(size = 9),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size = 10),
+        axis.text = element_text(colour = "black")) +
+  labs(title = "Proximity Mean VOT",
+       #subtitle = "Closer to zero is better.",
+       y = "Proximity (ms)") +
+  coord_cartesian() -> p.l2gr.s.vot
+```
+
+```{r}
+p.l2gr.s.durs <- wrap_plots(p.l2gr.s.dur, p.l2gr.s.vot) + 
+  plot_layout(axis_titles = "collect", axes = "collect_x") + 
+  plot_annotation(caption = "Closer to zero is better.", 
+                  tag_levels = "A",
+                  tag_suffix = ".") &
+  theme(plot.tag = element_text(size = 10))
+
+ggsave("l2gr_prox_sdurs.png", p.l2gr.s.durs, device = agg_png, width = 12, 
+       height = 6, units = "cm", res = 300, scaling = 0.7)
+```
+
+
+## Change In
+Could only really to it for tdk
+
+## Top Imitators
+```{r}
+df.top.gr.prox <- data.frame()
+
+measure.s <- quos(prox_cog, prox_sd, prox_skew, prox_kurt, prox_dur, prox_vot)
+measure.f <- quos(prox_cog_mid, prox_sd_mid, prox_skew_mid, prox_kurt_mid, prox_dur)
+
+for (m in measure.s) {
+   dfTemp <- dfFrGr_prox %>%
+    filter(!Consonant %in% c("f","v")) %>%
+    arrange(!! m) %>%
+    group_by(Consonant) %>%
+    slice(1:5) %>%
+    select(Speaker, Consonant) %>%
+    mutate(Measure = quo_name(m))
+  
+  df.top.gr.prox <- bind_rows(df.top.gr.prox, dfTemp)
+}
+
+for (m in measure.f) {
+   dfTemp <- dfFrGr_prox %>%
+    filter(Consonant %in% c("f","v")) %>%
+    arrange(!! m) %>%
+    group_by(Consonant) %>%
+    slice(1:5) %>%
+    select(Speaker, Consonant) %>%
+    mutate(Measure = quo_name(m))
+  
+  df.top.gr.prox <- bind_rows(df.top.gr.prox, dfTemp)
+}
+```
+
+```{r}
+df.top.gr.prox %>% count(Speaker, Consonant) %>% arrange(desc(n))
+
+df.top.gr.prox %>% count(Speaker) %>% arrange(desc(n))
+```
+
+
+## Substitutions
+Gives the count of each substitution for a target consonant.
+```{r}
+df.subs <- dfFrGreek %>%
+  filter(is_sub == 1) %>%
+  select(Consonant, Substituted)# %>% mutate(across(any_of(c("Consonant","Substituted")), as.factor))
+
+df.subs.count <- count(df.subs, Consonant, Substituted)
+```
+
+```{r}
+df.subs.count %>%
+  filter(Consonant %in% c("c", "θ", "ç", "x")) %>%
+  filter(n > 5) %>%
+  arrange(Consonant, desc(n)) %>%
+  t() %>%
+  kbl(format = "latex", booktabs = T,
+      caption = "Substitutions for Voiceless Consonants") %>%
+  kable_styling(full_width = T) %>%
+  add_header_above(c("c" = 1, "θ" = 4, "ç" = 3, "x" = 3, " ")) %>%
+  save_kable("sub_table_vl.tex", float = FALSE)
+
+
+df.subs.count %>%
+  filter(Consonant %in% c("ð", "ʝ", "ɣ")) %>%
+  filter(n > 5) %>%
+  arrange(Consonant, desc(n)) %>%
+  t() %>%
+  kbl(format = "latex", booktabs = T,
+      caption = "Substitutions for Voiced Consonants") %>%
+  kable_styling(full_width = T) %>%
+  add_header_above(c("ð" = 8, "ʝ" = 4, "ɣ" = 7, " ")) %>%
+  save_kable("sub_table_vd.tex", float = FALSE)
+```
+
+
+```{r}
+df.subs.count %>%
+  filter(n > 5) %>%
+  arrange(Consonant, desc(n)) %>%
+  t() %>%
+  kbl(format = "latex", booktabs = T) %>%
+  kable_styling(full_width = T) %>%
+  add_header_above(c(" ", "c" = 1, "θ" = 4, "ð" = 8, "ç" = 3, "ʝ" = 4, "x" = 3, "ɣ" = 7)) %>%
+  save_kable("sub_table.tex", float = FALSE)
+```
+

@@ -1,0 +1,1012 @@
+---
+title: "M2 Thesis Perception - Minus Below Chance"
+author:
+  name: Erik Morris
+  affiliation: Université Paris Cité
+date: "May 28, 2024"
+output:
+  html_notebook:
+    highlight: pygments
+    number_sections: yes
+    toc: yes
+    toc_depth: 6
+    toc_float:
+      collapsed: yes
+      fig_crop: no
+  html_document:
+    toc: yes
+    toc_depth: '6'
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+# Load Packages
+
+```{r message=FALSE}
+loadPackage <- c('tidyverse', 'vroom', 'emmeans', 'lmerTest', 'lme4', 'Matrix', 'knitr', 'xtable', 'corrplot', 'kableExtra', 'broom.mixed', 'patchwork', 'ragg')
+for(a in loadPackage){
+  library(a, character.only = TRUE)
+}
+```
+
+# Load Data
+
+```{r}
+# Read the cleaned OpenSesame output
+dfMasterRaw.chance <- read.csv("Master_Reaction.csv", header = TRUE)
+```
+
+
+## Filter and Convert to Factors
+
+```{r}
+# Filter out the time-out responses by finding response = none or response_time = 3000
+dfMaster.chance <- dfMasterRaw.chance %>% filter(response != "None", !Participant %in% c("FF05","FF10","FF20","FM01","FM06")) %>% select(-Condition)
+
+## With Condition as a seven level factor combining Conditions and Dialect
+dfMaster.chance <- dfMaster.chance %>% 
+  mutate(Condition = case_when(grepl("1a_", experiment_file) ~ "1-Athens",
+                               grepl("1b_", experiment_file) ~ "1-Thessaloniki",
+                               grepl("1c_", experiment_file) ~ "1-Crete",
+                               grepl("2a_", experiment_file) ~ "2-Athens",
+                               grepl("2b_", experiment_file) ~ "2-Thessaloniki",
+                               grepl("2c_", experiment_file) ~ "2-Crete",
+                               TRUE ~ "3-All")
+         )
+
+# Convert the categorical variables to factors
+dfMaster.chance <- dfMaster.chance %>%
+  mutate(Dialect = factor(Dialect, labels = c("All", "Athens", "Thessaloniki", "Crete")),
+         test_sp = factor(test_sp, labels = c("Multiple", "Single")),
+         Block = factor(Block),
+         correct = factor(correct),
+         Condition = factor(Condition)
+         )
+```
+
+## Add columns and Subset
+```{r}
+# Creating the contrast categories
+dfMaster.chance <- dfMaster.chance %>%
+  mutate(pair_type = case_when(Contrast %in% c(2,7,19) ~ "Native",
+                               Contrast %in% c(4,5,6,10,11,12,14,17,20) ~ "Foreign",
+                               Contrast %in% c(1,3,8,9,13,15,16,18,21) ~ "For-Nat",
+                               TRUE ~ NA),
+         obs_type = case_when(Contrast %in% c(1,2,3,7,8,9) ~ "Stop-Stop",
+                              Contrast %in% c(4,5,6,10,11,12) ~ "Fric-Fric",
+                              Contrast %in% c(13,14,15,16,17,18) ~ "Stop-Fric",
+                              TRUE ~ NA)
+         )
+
+# Condition
+dfByCond.chance <- dfMaster.chance %>% 
+  group_by(Condition) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+
+# Block
+dfByBlock.chance <- dfMaster.chance %>% 
+  group_by(Block) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+
+# Dialect - Mostly for plots
+dfByDialect.chance <- dfMaster.chance %>% 
+  group_by(Dialect) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time)) 
+
+# Test Block only
+dfByTest.chance <- dfMaster.chance %>% 
+  filter(Block==4) %>% 
+  group_by(test_sp) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+```
+
+
+# Plots
+## Condition
+```{r}
+# Accuracy
+dfByCond.chance %>% 
+  ggplot(aes(x = mean_correct, y = Condition, fill = Condition)) + 
+  theme_gray() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  #coord_flip(ylim = c(50,100)) +
+  coord_fixed(ratio = 3, xlim = c(50,100)) +
+  labs(title = "Mean Accuracy by Condition",
+       subtitle = "Excluding below chance",
+       y = "Condition",
+       x = "Mean Correct (%)") +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            hjust = 1.25, 
+            #vjust = 0.3,
+            size = 3) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        plot.margin = margin(t = 0, r = 0, b = 0.25, l = 0, unit = "cm"),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(size = 10, colour = "black")) -> p.cond.a
+
+# Reaction Time
+dfByCond.chance %>% 
+  ggplot(aes(x = reaction, y = Condition, fill = Condition)) + 
+  theme_gray() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  #coord_flip() +
+  coord_fixed(ratio = 47, xlim = c(200,1000)) +
+  labs(title = "Mean Response Time by Condition",
+       subtitle = "Excluding below chance",
+       caption = "Lower is better.",
+       y = "Condition",
+       x = "Mean Response Time (ms)") +
+  geom_text(aes(label = round(reaction, digits = 2)),
+            hjust = 1.25, 
+            #vjust = 0.3,
+            size = 3) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "cm"),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(size = 10, colour = "black")) -> p.cond.b
+```
+
+## Dialect
+```{r}
+# Accuracy
+dfByDialect.chance %>% 
+  ggplot(aes(x = Dialect, y = mean_correct, fill = Dialect)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  coord_cartesian(ylim = c(50,100)) +
+  labs(title = "Mean Accuracy by Dialect",
+       subtitle = "Excluding below chance",
+       x = "Dialect",
+       y = "Mean Correct (%)",
+       tag = "A.") +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 9, colour = "black")) -> p.dial.acc
+
+# Reaction Time
+dfByDialect.chance %>% 
+  ggplot(aes(x = Dialect, y = reaction, fill = Dialect)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  coord_cartesian(ylim = c(400,800)) +
+  labs(title = "Mean Response Time by Dialect",
+       subtitle = "Excluding below chance",
+       caption = "Lower is better",
+       x = "Dialect", 
+       y = "Mean Response Time (ms)") +
+  geom_text(aes(label = round(reaction, digits = 2)), 
+            size = 3,
+            position=position_dodge(width=0.9), 
+            vjust= -0.25) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(size = 9, colour = "black")) -> p.dial.rt
+```
+
+## Block
+```{r}
+# Accuracy
+dfByBlock.chance %>% 
+  ggplot(aes(x = Block, y = mean_correct, fill = Block)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  coord_cartesian(ylim = c(50,100)) +
+  scale_x_discrete(labels = c("Practice", "1", "2", "3", "Test")) + 
+  labs(title = "Mean Accuracy by Block",
+       subtitle = "Excluding below chance",
+       x = "Block", 
+       y = "Mean Correct (%)",
+       tag = "B.") +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black")) -> p.block.acc
+
+# Reaction Time
+dfByBlock.chance %>% 
+  ggplot(aes(x = Block, y = reaction, fill = Block)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  coord_cartesian(ylim = c(400,1000)) +
+  scale_x_discrete(labels = c("Practice", "1", "2", "3", "Test")) + 
+  labs(title = "Mean Response Time by Block",
+       subtitle = "Excluding below chance",
+       caption = "Lower is better",
+       x = "Block", 
+       y = "Mean Response Time (ms)") +
+  geom_text(aes(label = round(reaction, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9), 
+            vjust= -0.25) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black")) -> p.block.rt
+```
+
+### With Condition breakdown
+```{r}
+# Regrouping to see Condition means per block for progression tracking
+plot.line <- dfMaster.chance %>% 
+  group_by(Block, Condition) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time)) %>% 
+  filter(Block!=0)
+
+# Renaming the lables so that Test is clear
+block.labs <- c("1","2","3","Test")
+names(block.labs) <- c(1,2,3,4)
+
+plot.line %>%
+  ggplot(aes(x = mean_correct, y = Condition, fill = Condition)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", show.legend = FALSE) + 
+  coord_fixed(ratio = 600/1, xlim = c(60,120)) + 
+  labs(title = "Mean Accuracy by Block", 
+       subtitle = "Excluding below chance",
+       y = "Condition", 
+       x = "Mean Correct (%)") +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            hjust=-0.25) +
+  scale_fill_brewer(palette="Set2") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 8, colour = "black")) + 
+  facet_grid(~Block, space = "free_x", labeller = labeller(Block = block.labs)) -> p.blcond
+```
+
+```{r}
+# Saving the above plot
+ggsave("plot_blcond.png", p.blcond, device = agg_png, width = 15,
+       height = 6,
+       units = "cm", res = 300, scaling = 0.9)
+```
+
+
+## Test Speaker
+```{r}
+# Accuracy
+dfByTest.chance %>% 
+  ggplot(aes(x = test_sp, y = mean_correct, fill = test_sp)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) + 
+  coord_fixed(ratio = 1/30, ylim = c(50,100)) + 
+  scale_x_discrete(labels = c("Multiple", "Single")) + 
+  labs(title = "Test: Accuracy by Speaker",
+       subtitle = "Average of all participants, excluding below chance",
+       x = "Speaker",
+       y = "Mean Correct (%)") +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9), 
+            vjust=-0.25) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 9, colour = "black")) -> p.test.acc
+
+# Reaction Time
+dfByTest.chance %>% 
+  ggplot(aes(x = test_sp, y = reaction, fill = test_sp)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", width = 0.5, show.legend = FALSE) +
+  coord_fixed(ratio = 1/300, ylim = c(400,850)) +
+  scale_x_discrete(labels = c("Multiple", "Single")) + 
+  labs(title = "Test: Response Time by Speaker",
+       subtitle = "Average of all participants, excluding below chance",
+       caption = "Lower is better",
+       x = "Speaker",
+       y = "Mean Response Time (ms)") +
+  geom_text(aes(label = round(reaction, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1.5),
+        axis.text = element_text(size = 9, colour = "black")) -> p.test.rt
+```
+
+
+### By Dialect
+```{r}
+# Regrouping to see dialect scores in test block
+dfMaster.chance %>% 
+  filter(Block==4) %>% 
+  group_by(test_sp, Dialect) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time)) -> dfByTestDialect.chance
+
+# Accuracy
+dfByTestDialect.chance %>%
+  ggplot(aes(x = Dialect, y = mean_correct, fill = test_sp)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", position = "dodge") + 
+  coord_cartesian(ylim = c(0,100)) + 
+  labs(title = "Test Block x Dialect: ", 
+       subtitle = "Accuracy by Speaker No. across all Participants",
+       x = "Dialect", 
+       y = "Mean Correct (%)") + 
+  scale_fill_discrete(name="Speaker", labels = c("Multiple", "Single")) +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(10,0,10,0), size = 14),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        legend.position = c(0.9,0.9), 
+        legend.background = element_rect(fill = "transparent"),
+        legend.key.size = unit(4, "mm"))# -> p.test.d.acc
+
+# Reaction Times
+dfByTestDialect.chance %>%
+  ggplot(aes(x = Dialect, y = reaction, fill = test_sp)) +
+  theme_bw() +
+  geom_bar(stat = "identity", position = "dodge") + 
+  labs(title = "Test Block x Dialect: ",
+       subtitle = "Reaction Time by Speaker No. across all Participants",
+       caption = "Lower is better",
+       x = "Dialect",
+       y = "Mean Reaction Time (ms)") + 
+  scale_fill_discrete(name="Speaker", labels = c("Multiple", "Single")) +
+  geom_text(aes(label = round(reaction, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(10,0,10,0), size = 14),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        legend.position = c(0.9,0.9), 
+        legend.background = element_rect(fill = "transparent"),
+        legend.key.size = unit(4, "mm"))# -> p.test.d.rt
+```
+
+
+### By Condition
+```{r}
+# Regrouping to see condition scores in test block
+dfMaster.chance %>% 
+  filter(Block==4) %>% 
+  group_by(test_sp, Condition) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time)) -> dfByTestCondition.chance
+
+# Accuracy
+dfByTestCondition.chance %>%
+  ggplot(aes(x = Condition, y = mean_correct, fill = test_sp)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", position = "dodge") + 
+  coord_fixed(ratio = 1/20, ylim = c(50,110)) + 
+  labs(title = "Test x Condition: Accuracy by Speaker", 
+       subtitle = "Average across all participants, excluding below chance",
+       x = "Condition", 
+       y = "Mean Correct Responses") + 
+  scale_fill_discrete(name="Speaker", labels = c("Multiple", "Single")) +
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 8, colour = "black"),
+        legend.position = c(0.9,0.9), 
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9),
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm")) -> p.test.c.acc
+
+# Reaction Time
+dfByTestCondition.chance %>%
+  ggplot(aes(x = Condition, y = reaction, fill = test_sp)) + 
+  theme_bw() +
+  geom_bar(stat = "identity", position = "dodge") + 
+  coord_fixed(ratio = 1/300, ylim = c(200,1100)) +
+  labs(title = "Test x Condition: Response Time by Speaker",
+       subtitle = "Average across all participants, excluding below chance",
+       caption = "Lower is better",
+       x = "Condition", 
+       y = "Mean Response Time (ms)") + 
+  scale_fill_discrete(name="Speaker", labels = c("Multiple", "Single")) +
+  geom_text(aes(label = round(reaction, digits = 2)),
+            size = 3,
+            position=position_dodge(width=0.9),
+            vjust=-0.25) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 8, colour = "black"),
+        legend.position = c(0.9,0.9), 
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9),
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm")) -> p.test.c.rt
+```
+
+## Contrast
+```{r}
+# Contrast ranking
+## Filter, mutate to factor, and group by
+dfByContrast.chance <- dfMaster.chance %>% 
+  filter(!is.na(Contrast)) %>% 
+  mutate(Contrast = factor(Contrast)) %>% 
+  group_by(Contrast, pair_type) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+
+# Plot Accuracy
+dfByContrast.chance %>% 
+  filter(!Contrast %in% c(19,20,21)) %>%
+  ggplot(aes(x = mean_correct, y = Contrast, fill = pair_type)) + 
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2", name = "Type") +
+  geom_bar(stat = "identity") + 
+  scale_y_discrete(labels = c("*k-c", "k-t", "c-t", "θ-ç", "*x-ç", "x-θ",
+                              "d-g", "*g-ɟ", "ɟ-d", "*ɣ-ʝ", "ʝ-ð", "ɣ-ð",
+                              "θ-t", "ç-c", "k-x", "d-ð", "ɟ-ʝ", "g-ɣ")) +
+  coord_cartesian(xlim = c(60,110)) +
+  labs(title = "Mean Accuracy by Contrast",
+       subtitle = "Excluding below chance",
+       y = "Contrast", 
+       x = "Mean Correct (%)") + 
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            hjust = -0.25,
+            vjust = 0.3,
+            size = 3) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        #legend.position = c(0.94,0.88), 
+        legend.background = element_rect(fill = "transparent"), 
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm")) -> p.con.acc
+
+# Plot Reaction Time
+dfByContrast.chance %>% 
+  filter(!Contrast %in% c(19,20,21)) %>%
+  ggplot(aes(x = reaction, y = Contrast, fill = pair_type)) + 
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2", name = "Type") +
+  geom_bar(stat = "identity") + 
+  scale_y_discrete(labels = c("*k-c", "k-t", "c-t", "θ-ç", "*x-ç", "x-θ",
+                              "d-g", "*g-ɟ", "ɟ-d", "*ɣ-ʝ", "ʝ-ð", "ɣ-ð",
+                              "θ-t", "ç-c", "k-x", "d-ð", "ɟ-ʝ", "g-ɣ")) +
+  coord_cartesian(xlim = c(300,1000)) +
+  labs(title = "Mean Response Time by Contrast",
+       subtitle = "Excluding below chance",
+       y = "Contrast",
+       x = "Mean Response Time (ms)") + 
+  geom_text(aes(label = round(reaction, digits = 2)),
+            hjust = -0.25,
+            vjust = 0.3,
+            size = 3) +
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        #legend.position = c(0.94,0.88), 
+        legend.background = element_rect(fill = "transparent"), 
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm")) -> p.con.rt
+
+```
+
+### Consonant Type
+```{r}
+# Regrouping to see how the obstruent types (stop-stop, fric-fric, stop-fric) look
+dfByObs.chance <- dfMaster.chance %>% 
+  filter(!is.na(obs_type)) %>% 
+  mutate(Contrast = factor(Contrast), obs_type = factor(obs_type)) %>% 
+  group_by(Contrast, obs_type) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+
+dfByObs.chance %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  ggplot(aes(x = mean_correct, y = Contrast, fill = obs_type)) + 
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2", name = "Type") +
+  geom_bar(stat = "identity") + 
+  scale_y_discrete(labels = c("*k-c", "k-t", "c-t", "θ-ç", "*x-ç", "x-θ",
+                              "d-g", "*g-ɟ", "ɟ-d", "*ɣ-ʝ", "ʝ-ð", "ɣ-ð",
+                              "θ-t", "ç-c", "k-x", "d-ð", "ɟ-ʝ", "g-ɣ")) +
+  coord_cartesian(xlim = c(60,110)) +
+  labs(title = "Mean Accuracy by Obstruent Pairing",
+       subtitle = "Excluding below chance",
+       y = "Contrast", 
+       x = "Mean Correct (%)") + 
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            hjust = -0.25,
+            vjust = 0.3,
+            size = 3) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        #legend.position = c(0.94,0.88), 
+        legend.background = element_rect(fill = "transparent"), 
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm"))
+
+dfMaster.chance %>% 
+  filter(!is.na(obs_type)) %>% 
+  mutate(obs_type = factor(obs_type)) %>% 
+  group_by(obs_type) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time)) %>%
+  ggplot(aes(x = mean_correct, y = obs_type, fill = obs_type)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_cartesian(xlim = c(60,100)) +
+  labs(title = "Mean Accuracy by Obstruent Pairing",
+       subtitle = "Excluding below chance",
+       y = "Obstruent Pairing", 
+       x = "Mean Correct (%)") + 
+  geom_text(aes(label = round(mean_correct, digits = 2)),
+            hjust = -0.25,
+            vjust = 0.3,
+            size = 3) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        #legend.position = c(0.94,0.88), 
+        legend.background = element_rect(fill = "transparent"), 
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm")) -> p.obs.acc
+
+dfMaster.chance %>% 
+  filter(!is.na(obs_type)) %>% 
+  mutate(obs_type = factor(obs_type)) %>% 
+  group_by(obs_type) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time)) %>%
+  ggplot(aes(x = reaction, y = obs_type, fill = obs_type)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_cartesian(xlim = c(300,800)) +
+  labs(title = "Mean Response Time by Obstruent Pairing",
+       subtitle = "Excluding below chance",
+       y = "Obstruent Pairing", 
+       x = "Mean Response Time (ms)") + 
+  geom_text(aes(label = round(reaction, digits = 2)),
+            hjust = -0.25,
+            vjust = 0.3,
+            size = 3) + 
+  theme(plot.title = element_text(face = "bold", margin = margin(5,0,5,0), size = 12),
+        plot.title.position = "plot",
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black"),
+        #legend.position = c(0.94,0.88), 
+        legend.background = element_rect(fill = "transparent"), 
+        #legend.direction = "horizontal",
+        legend.key.size = unit(4, "mm")) -> p.obs.rt
+```
+
+
+## Contrast Type
+```{r}
+# Regrouping to see pair type (Native, Foreign, Foreign-Native) by condition
+dfByPairType.chance <- dfMaster.chance %>% 
+  filter(Block==4) %>%
+  mutate(pair_type = factor(pair_type)) %>% 
+  group_by(pair_type, Condition) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+
+# Plot Accuracy
+dfByPairType.chance %>% ggplot(aes(x = pair_type, y = mean_correct, fill = pair_type)) + 
+  theme_bw() +
+  scale_fill_brewer(palette = "Set2", name = "Type") +
+  geom_bar(stat = "identity", show.legend = FALSE) + 
+  coord_cartesian(ylim = c(50,110)) +
+  labs(title = "Mean Accuracy by Contrast Type - Test Block",
+       subtitle = "Excluding below chance",
+       x = "Contrast Type",
+       y = "Mean Correct (%)") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(10,0,10,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black")) +
+  geom_text(aes(label = round(mean_correct, digits = 2)), 
+            vjust = -0.25,
+            size = 3) +
+  facet_wrap(vars(dfByPairType.chance$Condition)) -> p.ctype.acc
+
+# Plot Reaction Time
+dfByPairType.chance %>% ggplot(aes(x = pair_type, y = reaction, fill = pair_type)) + 
+  theme_bw() +
+  scale_fill_brewer(palette = "Set2", name = "Type") +
+  geom_bar(stat = "identity", show.legend = FALSE) + 
+  coord_cartesian(ylim = c(300,1200)) +
+  labs(title = "Mean Response Time by Contrast Type - Test Block",
+       subtitle = "Excluding below chance",
+       x = "Contrast Type",
+       y = "Mean Response Time (ms)") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(10,0,10,0), size = 12),
+        plot.subtitle = element_text(size = 8),
+        #plot.title.position = "plot",
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(size = 10, colour = "black")) +
+  geom_text(aes(label = round(reaction, digits = 2)),
+            vjust = -0.25,
+            size = 3) +
+  facet_wrap(vars(dfByPairType.chance$Condition)) -> p.ctype.rt
+```
+
+```{r}
+# Saving the above plots
+ggsave("plot_ctype_acc.png", p.ctype.acc, device = agg_png, width = 12,
+       height = 14,
+       units = "cm", res = 300, scaling = 0.8)
+
+ggsave("plot_ctype_rt.png", p.ctype.rt, device = agg_png, width = 12,
+       height = 14,
+       units = "cm", res = 300, scaling = 0.8)
+```
+
+
+```{r}
+dfByPairType.ch2 <- dfMaster.chance %>% 
+  filter(Block==4) %>%
+  mutate(pair_type = factor(pair_type)) %>% 
+  group_by(pair_type) %>% 
+  reframe(count = n(),
+          total_correct = sum(as.numeric(correct==1)),
+          mean_correct = mean(as.numeric(levels(correct))[correct]*100),
+          reaction = mean(response_time))
+
+dfByPairType.ch2 %>% ggplot(aes(x = pair_type, y = mean_correct, fill = pair_type)) + 
+  theme_bw() +
+  scale_fill_brewer(palette = "Set2", name = "Type") +
+  geom_bar(stat = "identity", show.legend = FALSE) + 
+  coord_fixed(ratio = 1/35, ylim = c(0,100)) +
+  labs(title = "Mean Accuracy by Contrast Type",
+       x = "Contrast Type",
+       y = "Mean Correct (%)") + 
+  theme(plot.title = element_text(face = "bold", margin = margin(10,0,10,0), size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 1),
+        axis.text = element_text(size = 10, colour = "black")) +
+  geom_text(aes(label = round(mean_correct, digits = 2)), vjust = -0.25) # -> p.ctype.acc
+```
+
+
+```{r}
+# Creating a table because the chart wasn't worth using
+dfByPairType.chance %>% 
+  select(pair_type, Condition, mean_correct) %>%
+  pivot_wider(names_from = "Condition", values_from = "mean_correct") %>%
+  kbl() %>%
+  kable_styling() %>%
+  add_header_above(c(" " = 1, "Condition 1" = 3, "Condition 2" = 3, "Condition 3" = 1))
+
+dfByPairType.chance %>% 
+  select(pair_type, Condition, mean_correct) %>%
+  pivot_wider(names_from = "pair_type", values_from = "mean_correct") %>%
+  kbl(booktabs = T, digits = 2) %>%
+  kable_styling(full_width = T) %>%
+  add_header_above(c(" " = 1, "Contrast Type" = 3)) %>%
+  column_spec(2, background = "#66C2A5") %>%
+  column_spec(3, background = "#FC8D62") %>%
+  column_spec(4, background = "#8DA0CB")
+```
+
+# Models
+Before we do the models we are going to redo some of the dataframes to make them easier to use for statistical models.
+```{r}
+# Filter out the time-out responses by finding response = none or response_time = 3000
+dfMaster_mdls <- dfMasterRaw.chance %>% filter(response != "None", !Participant %in% c("FF05","FF10","FF20","FM01","FM06")) %>% select(-Condition)
+
+## With Condition as a seven level factor combining Conditions and Dialect
+dfMaster_mdls <- dfMaster_mdls %>% 
+  mutate(Condition = case_when(grepl("1a_", experiment_file) ~ "1-Athens",
+                               grepl("1b_", experiment_file) ~ "1-Thessaloniki",
+                               grepl("1c_", experiment_file) ~ "1-Crete",
+                               grepl("2a_", experiment_file) ~ "2-Athens",
+                               grepl("2b_", experiment_file) ~ "2-Thessaloniki",
+                               grepl("2c_", experiment_file) ~ "2-Crete",
+                               TRUE ~ "3-All")
+         )
+
+# Convert the categorical variables to factors
+dfMaster_mdls <- dfMaster_mdls %>%
+  mutate(Dialect = factor(Dialect, labels = c("All", "Athens", "Thessaloniki", "Crete")),
+         test_sp = factor(case_when(Block == 4 & test_sp == 0 ~ "Multiple",
+                                    Block == 4 & test_sp == 1 ~ "Single",
+                                    TRUE ~ NA)),
+         Block = factor(Block),
+         correct = factor(correct),
+         Condition = factor(Condition)
+         )
+
+dfMaster_mdls <- dfMaster_mdls %>%
+  mutate(pair_type = case_when(Contrast %in% c(2,7,19) ~ "Native",
+                               Contrast %in% c(4,5,6,10,11,12,14,17,20) ~ "Foreign",
+                               Contrast %in% c(1,3,8,9,13,15,16,18,21) ~ "For-Nat",
+                               TRUE ~ NA),
+         obs_type = case_when(Contrast %in% c(1,2,3,7,8,9) ~ "Stop-Stop",
+                              Contrast %in% c(4,5,6,10,11,12) ~ "Fric-Fric",
+                              Contrast %in% c(13,14,15,16,17,18) ~ "Stop-Fric",
+                              TRUE ~ NA)
+         )
+
+dfLog.chance <- dfMaster_mdls %>% mutate(response_time = log(response_time))
+```
+
+# LMER
+Creating multiple models by slowly adding fixed effects, random effects and slopes.
+
+If you would like to save time, and your computer, load the all 12 models (lmer and glmer) from the perc_models.RData
+```{r}
+mdl1 <- dfLog.chance %>%
+  filter(!is.infinite(response_time)) %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>% 
+  lmer(response_time ~ Condition + (1|Participant) + (Condition|Contrast), data = .,
+       control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5))) 
+
+mdl2 <- dfLog.chance %>%
+  filter(!is.infinite(response_time)) %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>% 
+  lmer(response_time ~ Condition + (1|Participant) + (1|Contrast), data = .,
+       control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5))) 
+
+mdl3 <- dfLog.chance %>%
+  filter(!is.infinite(response_time)) %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>% 
+  lmer(response_time ~ Condition + test_sp + (1|Participant) + (1|Contrast), data = .,
+       control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5))) 
+
+mdl4 <- dfLog.chance %>%
+  filter(!is.infinite(response_time)) %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>% 
+  lmer(response_time ~ Condition + test_sp + (1|Participant) + (Condition|Contrast), data = .,
+       control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5))) 
+
+mdl5 <- dfLog.chance %>%
+  filter(!is.infinite(response_time)) %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>% 
+  lmer(response_time ~ Condition + test_sp + (test_sp|Participant) + (Condition|Contrast), data = .,
+       control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5)))
+
+mdl6 <- dfLog.chance %>%
+  filter(!is.infinite(response_time)) %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>% 
+  #filter(!Contrast %in% c(19,20,21)) %>% 
+  lmer(response_time ~ Condition * test_sp + (test_sp|Participant) + (Condition|Contrast), data = .,
+       control = lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 1e5))) 
+```
+## Anova
+```{r}
+# mdl1 and 2 have more observations because of the lack of test_sp
+# The rest match and are essentially the same as if I had filtered for block 4
+anova(mdl1, mdl2)
+anova(mdl6, mdl5, mdl4, mdl3)
+```
+## Summary and Coefficients
+```{r}
+# Prefered of the single fixed effect models
+summary(mdl1)
+coef(mdl1)
+```
+
+```{r}
+summary(mdl6)
+coef(mdl6)
+```
+
+```{r}
+# Create a table of the results
+tidy(mdl6, effects = "fixed") %>% 
+  select(-effect, -df) %>% 
+  mutate(p.value = scales::pvalue(p.value)) %>%
+  kbl(format = "latex", booktabs = T, 
+      col.names = c("Predictor", "B", "SE", "t", "p"), 
+      digits = c(0, 2, 3, 2, 3), 
+      align = c("l", "r", "r", "r", "r")) %>%
+  kable_styling(full_width = T) %>% save_kable("lmer_fixed.tex", float = FALSE)
+```
+
+## Emmeans
+### Model 1
+```{r}
+mdl1 %>% emmeans(pairwise ~ Condition)
+```
+
+```{r}
+#emm_options(pbkrtest.limit = 10000)
+emm_options(pbkrtest.limit = 5000)
+```
+
+### Model 6
+```{r}
+mdl6 %>% emmeans(pairwise ~ test_sp)
+mdl6 %>% emmeans(pairwise ~ Condition)
+mdl6 %>% emmeans(pairwise ~ Condition * test_sp)
+```
+
+# GLMER
+```{r}
+gl.mdl1 <- dfMaster_mdls %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>%
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  glmer(correct ~ Condition + (1|Participant) + (1|Contrast), data = ., family = binomial)
+
+gl.mdl2 <- dfMaster_mdls %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>%
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  glmer(correct ~ Condition + (1|Participant) + (Condition|Contrast), data = ., family = binomial)
+
+gl.mdl3 <- dfMaster_mdls %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>%
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  glmer(correct ~ Condition + test_sp + (1|Participant) + (1|Contrast), data = ., family = binomial)
+
+gl.mdl4 <- dfMaster_mdls %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>%
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  glmer(correct ~ Condition + test_sp + (1|Participant) + (Condition|Contrast), data = ., family = binomial)
+
+gl.mdl5 <- dfMaster_mdls %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>%
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  glmer(correct ~ Condition + test_sp + (test_sp|Participant) + (Condition|Contrast), data = ., family = binomial)
+```
+
+```{r}
+# Run this one separately becuase it takes ages
+gl.mdl6 <- dfMaster_mdls %>%
+  filter(Block != 0) %>%
+  #filter(!is.na(Contrast)) %>%
+  #filter(!Contrast %in% c(19,20,21)) %>%
+  glmer(correct ~ Condition * test_sp + (test_sp|Participant) + (Condition|Contrast), data = ., family = binomial)
+```
+## Anova
+```{r}
+anova(gl.mdl1, gl.mdl2)
+anova(gl.mdl3, gl.mdl4, gl.mdl5, gl.mdl6)
+```
+## Summary and Coefficients
+```{r}
+# Prefered of the single fixed effect
+summary(gl.mdl2)
+coef(gl.mdl2)
+```
+
+```{r}
+summary(gl.mdl6)
+coef(gl.mdl6)
+```
+
+```{r}
+# Create table of the results
+tidy(gl.mdl6, effects = "fixed") %>% 
+  select(-effect) %>% 
+  mutate(p.value = scales::pvalue(p.value)) %>%
+  kbl(format = "latex", booktabs = T, 
+      col.names = c("Predictor", "B", "SE", "t", "p"), 
+      digits = c(0, 2, 3, 2, 3), 
+      align = c("l", "r", "r", "r", "r")) %>%
+  kable_styling(full_width = T) %>% save_kable("glmer_fixed.tex", float = FALSE)
+```
+
+```{r}
+tidy(gl.mdl2, effects = "fixed") %>%
+  select(-effect) %>%
+  mutate(p.value = scales::pvalue(p.value)) %>%
+  kbl(digits = c(0, 2, 3, 2, 3),) %>% kable_styling(full_width = T)
+```
+
+## Emmeans
+### Model 2
+```{r}
+gl.mdl2 %>% emmeans(pairwise ~ Condition, type = "response")
+```
+
+### Model 6
+```{r}
+gl.mdl6 %>% emmeans(pairwise ~ test_sp, type = "response")
+gl.mdl6 %>% emmeans(pairwise ~ Condition, type = "response")
+gl.mdl6 %>% emmeans(pairwise ~ Condition * test_sp, type = "response")
+```

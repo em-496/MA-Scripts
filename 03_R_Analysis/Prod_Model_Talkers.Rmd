@@ -1,0 +1,1020 @@
+---
+title: "M2 Thesis - Model Talker Production"
+author:
+  name: Erik Morris
+  affiliation: Université Paris Cité
+date: "May 15, 2024"
+output:
+  html_notebook:
+    highlight: pygments
+    number_sections: yes
+    toc: yes
+    toc_depth: 6
+    toc_float:
+      collapsed: yes
+      fig_crop: no
+  html_document:
+    toc: yes
+    toc_depth: '6'
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+# Load Packages
+
+```{r message=FALSE}
+loadPackage <- c('tidyverse', 'knitr', 'kableExtra', 'patchwork', 'ragg')
+for(a in loadPackage){
+  library(a, character.only = TRUE)
+}
+```
+
+# Load Data
+Praat outputs encoding at UTF-16
+
+```{r}
+# Model French
+dfKlem <- read.csv("MFF_Measures_head.csv", header = TRUE, fileEncoding = "UTF-16")
+
+# Model Greek
+dfMGr <- read.csv("MGr_Measures_head.csv", header = TRUE, fileEncoding = "UTF-16")
+
+# Print the frames for quick checking
+dfKlem
+dfMGr
+```
+
+# Prepare the data
+## Factors
+```{r}
+# Convert categorical variables to factors
+fac_list <- c("Consonant", "Vowel", "Block", "is_sub")
+## Model French: Consonant, Vowel
+dfKlem <- dfKlem %>% mutate(across(any_of(fac_list), as.factor))
+## Model Greek: Consonant, Vowel
+dfMGr <- dfMGr %>% mutate(across(any_of(fac_list), as.factor))
+
+# Reorder the levels of some factors
+dfKlem$Consonant <- factor(dfKlem$Consonant, levels = c("t","d","k","g","f","v"))
+dfMGr$Consonant <- factor(dfMGr$Consonant, levels = c("t","d","c","ɟ","k","g","θ","ð","ç","ʝ","x","ɣ"))
+```
+
+
+## Time conversion to ms
+```{r}
+# Convert Stop time measures to ms (because I forgot to in the Praat script)
+dfKlem <- dfKlem %>% 
+  mutate(FricBurst_dur = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ FricBurst_dur * 1000,
+                                   TRUE ~ FricBurst_dur),
+         Closure = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ Closure * 1000,
+                             TRUE ~ Closure),
+         VOT = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ VOT * 1000,
+                         TRUE ~ VOT))
+
+dfMGr <- dfMGr %>% 
+  mutate(FricBurst_dur = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ FricBurst_dur * 1000,
+                                   TRUE ~ FricBurst_dur),
+         Closure = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ Closure * 1000,
+                             TRUE ~ Closure),
+         VOT = case_when(Consonant %in% c("t","d","c","ɟ","k","g") ~ VOT * 1000,
+                         TRUE ~ VOT))
+```
+
+## Calculations of measures
+```{r}
+# French Model
+dfKlem_gp <- dfKlem %>% group_by(Speaker, Consonant) %>% 
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+
+# Greek Model Talkers
+dfMGr_gp <- dfMGr %>% group_by(Speaker, Consonant) %>%
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+
+# Greek "in general"
+dfGr_general <- dfMGr %>% group_by(Consonant) %>%
+  reframe(count = n(), mean_cog = mean(CoG), min_cog = min(CoG), max_cog = max(CoG),
+          mean_sd = mean(SD), min_sd = min(SD), max_sd = max(SD),
+          mean_kurt = mean(Kurt), min_kurt = min(Kurt), max_kurt = max(Kurt),
+          mean_skew = mean(Skew), min_skew = min(Skew), max_skew = max(Skew),
+          mean_cog_mid = mean(CoG_mid), min_cog_mid = min(CoG_mid), max_cog_mid = max(CoG_mid),
+          mean_sd_mid = mean(SD_mid), min_sd_mid = min(SD_mid), max_sd_mid = max(SD_mid),
+          mean_kurt_mid = mean(Kurt_mid), min_kurt_mid = min(Kurt_mid), max_kurt_mid = max(Kurt_mid),
+          mean_skew_mid = mean(Skew_mid), min_skew_mid = min(Skew_mid), max_skew_mid = max(Skew_mid),
+          mean_dur = mean(FricBurst_dur), min_dur = min(FricBurst_dur), max_dur = max(FricBurst_dur),
+          mean_closure = mean(Closure), min_closure = min(Closure), max_closure = max(Closure),
+          mean_vot = mean(VOT), min_vot = min(VOT), max_vot = max(VOT),
+          mean_amp = mean(Burst_Amp), min_amp = min(Burst_Amp), max_amp = max(Burst_Amp)
+)
+```
+
+Here we take the calculations already done and group them by Dialect to see any major differences in acoustics between the dialects.
+```{r}
+dfMGr_dialect <- dfMGr_gp %>%
+  mutate(Dialect = factor(case_when(startsWith(Speaker, "A") ~ "Athens",
+                                    startsWith(Speaker, "T") ~ "Thessaloniki",
+                                    TRUE ~ "Crete")
+                          )
+         )
+```
+
+# Native Greek Speakers
+May be possible to add the range found in studies by Nirgianaki etc.
+For the purposes of graphing the Greek speakers alone, we will separate the Fricative and Stop data into two frames. 
+```{r}
+# Per Speaker
+dfMGr_stop <- dfMGr_gp %>% filter(Consonant %in% c("d","t","g","k","ɟ","c"))
+dfMGr_fric <- dfMGr_gp %>% filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ"))
+
+# Greek Overall
+dfGrGen_stop <- dfGr_general %>% filter(Consonant %in% c("d","t","g","k","ɟ","c"))
+dfGrGen_fric <- dfGr_general %>% filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ"))
+```
+
+## Fricatives
+Measures for fricatives are limited to Spectral Moments at Midpoint and Duration
+
+### Spectral Moments
+
+COG
+```{r}
+# Per Speaker
+dfMGr_fric %>%
+  ggplot(aes(x = Speaker, y = mean_cog_mid)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Fricaties: Mean CoG Midpoint by Speaker", y = "Mean CoG (Hz)") +
+  facet_wrap(~Consonant)
+
+# Overall NG Fric
+dfGrGen_fric %>%
+  ggplot(aes(x = Consonant, y = mean_cog_mid, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_cog_mid, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricaties: Mean CoG Midpoint", y = "Mean CoG (Hz)")
+```
+
+Variance
+```{r}
+# Per Speaker
+dfMGr_fric %>%
+  ggplot(aes(x = Speaker, y = mean_sd_mid)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Fricaties: Mean Variance Midpoint by Speaker", y = "Mean Variance (Hz)") +
+  facet_wrap(~Consonant)
+
+# Overall NG Fric
+dfGrGen_fric %>%
+  ggplot(aes(x = Consonant, y = mean_sd_mid, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_sd_mid, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricaties: Mean Variance Midpoint", y = "Mean Variance (Hz)")
+```
+
+Skewness
+```{r}
+# Per Speaker
+dfMGr_fric %>%
+  ggplot(aes(x = Speaker, y = mean_skew_mid)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Fricaties: Mean Skewness Midpoint by Speaker", y = "Mean Skewness") +
+  facet_wrap(~Consonant)
+
+# Overall NG Fric
+dfGrGen_fric %>%
+  ggplot(aes(x = Consonant, y = mean_skew_mid, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_skew_mid, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricaties: Mean Skewness Midpoint", y = "Mean Skewness")
+```
+
+Kurtosis
+```{r}
+# Per Speaker
+dfMGr_fric %>%
+  ggplot(aes(x = Speaker, y = mean_kurt_mid)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Fricaties: Mean Kurtosis Midpoint by Speaker", y = "Mean Kurtosis") +
+  facet_wrap(~Consonant)
+
+# Overall NG Fric
+dfGrGen_fric %>%
+  ggplot(aes(x = Consonant, y = mean_kurt_mid, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_kurt_mid, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricaties: Mean Kurtosis Midpoint", y = "Mean Kurtosis")
+```
+
+### Duration
+```{r}
+## Per Speaker
+dfMGr_fric %>% 
+  ggplot(aes(x = Speaker, y = mean_dur)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,200)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Fricatives: Mean Duration by Speaker", y = "Mean Duration (ms)") +
+  facet_wrap(~Consonant)
+
+# Greek Overall
+dfGrGen_fric %>%
+  ggplot(aes(x = Consonant, y = mean_dur, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,0.1)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_dur, digits = 1)), position=position_dodge(width=0.9), vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricatives: Mean Duration", y = "Mean Duration (ms)")
+```
+
+## Stops
+Measures for stops are limited to Spectral Moments, burst duration, and VOT
+
+### Spectral Moments
+
+COG
+```{r}
+# Per Speaker
+dfMGr_stop %>%
+  ggplot(aes(x = Speaker, y = mean_cog)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Stop Burst: Mean CoG by Speaker", y = "Mean CoG (Hz)") +
+  facet_wrap(~Consonant)
+
+# Overall NG Stop Burst
+dfGrGen_stop %>%
+  ggplot(aes(x = Consonant, y = mean_cog, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_cog, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop Burst: Mean CoG", y = "Mean CoG (Hz)")
+```
+Variance
+```{r}
+# Per Speaker
+dfMGr_stop %>%
+  ggplot(aes(x = Speaker, y = mean_sd)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Stop Burst: Mean Variance by Speaker", y = "Mean Variance (Hz)") +
+  facet_wrap(~Consonant)
+
+# Overall NG
+dfGrGen_stop %>%
+  ggplot(aes(x = Consonant, y = mean_sd, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_sd, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop Burst: Mean Variance", y = "Mean Variance (Hz)")
+```
+
+Skewness
+```{r}
+# Per Speaker
+dfMGr_stop %>%
+  ggplot(aes(x = Speaker, y = mean_skew)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Stop Burst: Mean Skewness by Speaker", y = "Mean Skewness") +
+  facet_wrap(~Consonant)
+
+# Overall NG
+dfGrGen_stop %>%
+  ggplot(aes(x = Consonant, y = mean_skew, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_skew, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop Burst: Mean Skewness", y = "Mean Skewness")
+```
+
+Kurtosis
+```{r}
+# Per Speaker
+dfMGr_stop %>%
+  ggplot(aes(x = Speaker, y = mean_kurt)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Stop Burst: Mean Kurtosis by Speaker", y = "Mean Kurtosis") +
+  facet_wrap(~Consonant)
+
+# Overall NG
+dfGrGen_stop %>%
+  ggplot(aes(x = Consonant, y = mean_kurt, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_kurt, digits = 1)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop Burst: Mean Kurtosis", y = "Mean Kurtosis")
+```
+
+### Burst Duration
+```{r}
+## Per Speaker
+dfMGr_stop %>%
+  ggplot(aes(x = Speaker, y = mean_dur)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,0.1)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Stop: Burst Mean Duration by Speaker", y = "Mean Duration (ms)") +
+  facet_wrap(~Consonant)
+
+## Greek Overall
+dfGrGen_stop %>%
+  ggplot(aes(x = Consonant, y = mean_dur, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,0.1)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_dur, digits = 3)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop: Burst Mean Duration", y = "Mean Duration (ms)")
+```
+
+### VOT
+```{r}
+# Per Speaker
+dfMGr_stop %>%
+  ggplot(aes(x = Speaker, y = mean_vot)) +
+  theme_gray() +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_point(stat = "identity") +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = 0.5),
+        axis.title.y = element_text(vjust = 2),
+        axis.text.x = element_text(size = 6, angle = 90, vjust = 0.5),
+        axis.text = element_text(colour = "black"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "NG Stops: Mean VOT by Speaker", y = "Mean VOT (ms)") +
+  facet_wrap(~Consonant)
+
+# Greek Overall
+dfGrGen_stop %>%
+  ggplot(aes(x = Consonant, y = mean_vot, fill = Consonant)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  #coord_cartesian(ylim = c(0,9000)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  geom_text(aes(label = round(mean_vot, digits = 2)),
+            vjust=-0.25) +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        #axis.text.x = element_text(angle = 90),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stops: Mean VOT", y = "Mean VOT (ms)")
+```
+
+```{r}
+dfMGr_stop %>%
+  ggplot(aes(x = Consonant, y = mean_vot)) +
+  theme_gray() +
+  geom_boxplot() +
+  geom_point(aes(colour = Speaker, alpha = 0.3), stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stops: Mean VOT", y = "Mean VOT (ms)")
+```
+## Tables of Overall Measures
+```{r}
+dfGrGen_fric %>%
+select(Consonant, mean_cog_mid, mean_sd_mid, mean_skew_mid, mean_kurt_mid, mean_dur) %>%
+  mutate_if(is.numeric, round, digits=2) %>%
+  kbl(format = "latex", booktabs = T,
+      col.names = c("Consonant", "CoG (Hz)", "Variance (Hz)", "Skewness", "Kurtosis", "Duration (ms)"),
+      align = c("l", "c", "c", "c", "c", "c")) %>%
+  kable_styling(full_width = T) %>% save_kable("ng_frics.tex", float = FALSE)
+
+dfGrGen_stop %>%
+  select(Consonant, mean_cog, mean_sd, mean_skew, mean_kurt, mean_dur, mean_vot) %>%
+  mutate_if(is.numeric, round, digits=2) %>%
+  kbl(format = "latex", booktabs = T,
+      col.names = c("Consonant", "CoG (Hz)", "Variance (Hz)", "Skewness", "Kurtosis", "Duration (ms)", "VOT (ms)"),
+      align = c("l", "c", "c", "c", "c", "c", "c")) %>%
+  kable_styling(full_width = T) %>% save_kable("ng_stops.tex", float = FALSE)
+```
+
+
+# Greek Dialects
+
+## Fricatives
+
+### Spectral Moments
+COG
+```{r}
+dfMGr_dialect %>%
+  filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_cog_mid, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3), 
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Fricatives COG Midpoint",
+       y = "COG (Hz)") +
+  #coord_equal(ratio = 1/3000)
+  coord_cartesian() -> p.ng.f.cog
+```
+
+Variance
+```{r}
+dfMGr_dialect %>%
+  filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_sd_mid, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3), 
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Fricatives Variance Midpoint",
+       y = "Variance (Hz)") +
+  #coord_equal(ratio = 1/1100)
+  coord_cartesian() -> p.ng.f.var
+```
+
+Skewness
+```{r}
+dfMGr_dialect %>%
+  filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_skew_mid, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3), 
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Fricatives Skewness Midpoint",
+       y = "Mean Skewness") +
+  coord_cartesian() -> p.ng.f.skew
+```
+
+Kurtosis
+```{r}
+dfMGr_dialect %>%
+  filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_kurt_mid, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3), 
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.75, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Fricatives Kurtosis Midpoint",
+       y = "Mean Kurtosis") +
+  coord_cartesian() -> p.ng.f.kurt
+```
+
+### Duration
+```{r}
+dfMGr_dialect %>%
+  filter(Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_dur, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Fricative Duration",
+       y = "Duration (ms)") +
+  coord_cartesian() -> p.ng.f.dur
+```
+
+Save all of the plots for Fricatives
+```{r}
+ggsave("NG_fric_cog.png", p.ng.f.cog, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_fric_var.png", p.ng.f.var, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_fric_skew.png", p.ng.f.skew, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_fric_kurt.png", p.ng.f.kurt, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_fric_dur.png", p.ng.f.dur, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+```
+
+
+## Stops
+
+### Spectral Moments
+COG
+```{r}
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_cog, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stop Burst COG",
+       y = "COG (Hz)") +
+  coord_cartesian() -> p.ng.s.cog
+```
+
+Variance
+```{r}
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_sd, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.75, 0.95),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9),
+        legend.direction = "horizontal") +
+  labs(title = "Stop Burst Variance",
+       y = "Variance (Hz)") +
+  coord_cartesian() -> p.ng.s.var
+```
+
+Skewness
+```{r}
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_skew, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.75, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stop Burst Skewness",
+       y = "Mean Skewness") +
+  coord_cartesian() -> p.ng.s.skew
+```
+
+Kurtosis
+```{r}
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_kurt, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.75, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stop Burst Kurtosis",
+       y = "Mean Kurtosis") +
+  coord_cartesian() -> p.ng.s.kurt
+```
+
+### Duration
+```{r}
+# Duration
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  ggplot(aes(x = Consonant, y = mean_dur, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Stop Burst Duration",
+       y = "Duration (ms)") +
+  coord_cartesian() -> p.ng.s.dur
+```
+
+### VOT
+```{r}
+# VOT
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  #mutate(Consonant = factor(Consonant, levels = c("t","c","k","d","ɟ","g"))) %>%
+  #ggplot(aes(x = Dialect, y = mean_vot, fill = Dialect)) +
+  ggplot(aes(x = Dialect, y = mean_vot, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot(show.legend = FALSE) +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        legend.position = c(0.9, 0.85),
+        legend.background = element_rect(fill = "transparent"),
+        strip.background = element_rect(fill = "seashell3"),
+        strip.text = element_text(size = 12, vjust = 1)) +
+  labs(title = "Mean VOT by Dialect", y = "Duration (ms)") +
+  facet_wrap(~Consonant, scales = "free_y")
+
+dfMGr_dialect %>%
+  filter(!Consonant %in% c("θ","ð","ç","ʝ","x","ɣ")) %>%
+  #mutate(Consonant = factor(Consonant, levels = c("t","c","k","d","ɟ","g"))) %>%
+  #ggplot(aes(x = Dialect, y = mean_vot, fill = Dialect)) +
+  ggplot(aes(x = Consonant, y = mean_vot, fill = Dialect)) +
+  theme_gray() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_boxplot() +
+  geom_point(aes(alpha = 0.3),
+             position = position_dodge(width = 0.75),
+             stat = "identity",
+             show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11),
+        legend.position = c(0.9, 0.85),
+        #legend.position = "top",
+        legend.background = element_rect(fill = "transparent"),
+        legend.title = element_text(size = 9)) +
+  labs(title = "Mean Voice Onset Time", y = "Duration (ms)") +
+  coord_cartesian() -> p.ng.s.vot
+```
+Saving all of the plots for Stops
+```{r}
+ggsave("NG_stop_cog.png", p.ng.s.cog, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_stop_var.png", p.ng.s.var, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_stop_skew.png", p.ng.s.skew, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_stop_kurt.png", p.ng.s.kurt, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_stop_dur.png", p.ng.s.dur, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+
+ggsave("NG_VOT.png", p.ng.s.vot, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+```
+
+
+## Plot
+```{r}
+dfMGr %>%
+  ggplot(aes(x = Consonant, y = FricBurst_dur)) +
+  geom_boxplot() +
+  theme_gray() +
+  geom_point(aes(colour = Speaker, alpha = 0.3), stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(face = "bold", size = 12),
+        axis.title.x = element_text(vjust = -0.25),
+        axis.title.y = element_text(vjust = 2),
+        axis.text = element_text(colour = "black"),
+        axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 11)) +
+  labs(title = "Durations & Tokens",
+       y = "Duration (ms)") +
+  coord_cartesian() -> p.ng.tokens
+
+ggsave("NG_dur_tokens.png", p.ng.tokens, device = agg_png, width = 14,
+       height = 8, units = "cm", res = 300, scaling = 0.7)
+```
+
+### Duration
+```{r}
+#Boxplots
+dfMGr_fric %>%
+  ggplot(aes(x = Consonant, y = mean_dur)) +
+  theme_minimal() +
+  geom_boxplot() +
+  #geom_errorbar(aes(ymin = mean(prox_cog)-mean(prox_sd), ymax = mean(prox_cog)+mean(prox_sd)), width = 0.2) +
+  geom_point(aes(colour = Speaker, alpha = 0.3), stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricatives: Mean Duration", y = "Mean Duration (ms)")
+
+dfMGr_stop %>%
+  ggplot(aes(x = Consonant, y = mean_dur)) +
+  theme_minimal() +
+  geom_boxplot() +
+  #geom_errorbar(aes(ymin = mean(prox_cog)-mean(prox_sd), ymax = mean(prox_cog)+mean(prox_sd)), width = 0.2) +
+  geom_point(aes(colour = Speaker, alpha = 0.3), stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop: Burst Mean Duration", y = "Mean Duration (ms)")
+```
+
+### CoG Midpoint
+```{r}
+#Boxplots
+dfMGr_fric %>%
+  ggplot(aes(x = Consonant, y = mean_cog_mid)) +
+  theme_minimal() +
+  geom_boxplot() +
+  #geom_errorbar(aes(ymin = mean(prox_cog)-mean(prox_sd), ymax = mean(prox_cog)+mean(prox_sd)), width = 0.2) +
+  geom_point(aes(colour = Speaker, alpha = 0.3), stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Fricaties: Mean CoG Midpoint", y = "Mean CoG (Hz)")
+
+dfMGr_stop %>%
+  ggplot(aes(x = Consonant, y = mean_cog)) +
+  theme_minimal() +
+  geom_boxplot() +
+  #geom_errorbar(aes(ymin = mean(prox_cog)-mean(prox_sd), ymax = mean(prox_cog)+mean(prox_sd)), width = 0.2) +
+  geom_point(aes(colour = Speaker, alpha = 0.3), stat = "identity", show.legend = FALSE) +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.text = element_text(size = 11)) +
+  labs(title = "Overall NG Stop Burst: Mean CoG Midpoint", y = "Mean CoG (Hz)")
+```
+
+# Clemence
+Separating out the types
+```{r}
+dfKlem_fric <- dfKlem_gp %>% filter(Consonant %in% c("f","v"))
+dfKlem_stop <- dfKlem_gp %>% filter(Consonant %in% c("t","d","k","g"))
+```
+
+Because she will be visually included on all of the imitation plots we will only use tables of the measures for the overview of her measures.
+```{r}
+dfKlem_fric %>%
+  select(Consonant, mean_cog_mid, mean_sd_mid, mean_skew_mid, mean_kurt_mid, mean_dur) %>%
+  mutate_if(is.numeric, round, digits=2) %>%
+  kbl(format = "latex", booktabs = T,
+      col.names = c("Consonant", "CoG (Hz)", "Variance (Hz)", "Skewness", "Kurtosis", "Duration (ms)"),
+      align = c("l", "c", "c", "c", "c", "c")) %>%
+  kable_styling(full_width = T) %>% save_kable("klem_frics.tex", float = FALSE)
+
+dfKlem_stop %>%
+  select(Consonant, mean_cog, mean_sd, mean_skew, mean_kurt, mean_dur, mean_vot) %>%
+  mutate_if(is.numeric, round, digits=2) %>%
+  kbl(format = "latex", booktabs = T,
+      col.names = c("Consonant", "CoG (Hz)", "Variance (Hz)", "Skewness", "Kurtosis", "Duration (ms)", "VOT (ms)"),
+      align = c("l", "c", "c", "c", "c", "c", "c")) %>%
+  kable_styling(full_width = T) %>% save_kable("klem_stops.tex", float = FALSE)
+```
+
